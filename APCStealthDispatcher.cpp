@@ -90,11 +90,11 @@ private:
 #ifdef _M_X64
             const uint8_t xor_key = 0x48;
 
-			uint8_t shellcode_Ex2[] =  //weakly encrypted shellcode, which will be copied to our allocated region and then decrypted & executed
+            uint8_t shellcode_Ex2[] =  //weakly encrypted shellcode, which will be copied to our allocated region and then decrypted & executed
             {
-				0x4C ^ xor_key, 0x8B ^ xor_key, 0xD1 ^ xor_key, 0xB8 ^ xor_key, 0x67 ^ xor_key, 0x01 ^ xor_key, 0x00 ^ xor_key, 0x00 ^ xor_key,
-				0xCD ^ xor_key, 0x2E ^ xor_key, 0xC3 ^ xor_key
-			};
+                0x4C ^ xor_key, 0x8B ^ xor_key, 0xD1 ^ xor_key, 0xB8 ^ xor_key, 0x67 ^ xor_key, 0x01 ^ xor_key, 0x00 ^ xor_key, 0x00 ^ xor_key,
+                0xCD ^ xor_key, 0x2E ^ xor_key, 0xC3 ^ xor_key
+            };
 
             DWORD dwOldProt = 0;
 
