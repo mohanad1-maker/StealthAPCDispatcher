@@ -1,2 +1,6 @@
 # StealthAPCDispatcher
-Thread scheduling stealth method using APC with encrypted shellcode
+Schedules functions to be executed via user APC by using direct syscalls within an encrypted shellcode. Perfect for stealth operations, red-teams, anti-cheat, cheats, etc. Supports both x86 and x64 on Windows.  
+
+Works by using template recursion to pack parameters into a structure object, which is then passed to the APC routine. This method supports any number of parameters and works elegantly to hide function exeuction for routines which would normally be in their own threads, so you can avoid using `CreateThread` or similar. Our APC worker thread sleeps infinitely until woken up by a scheduled/queued routine, which means work can be scheduled without any subsequent calls to `CreateThread`. Because we are using encrypted shellcode with direct `syscall`, execution of our queued tasks cannot be tampered with easily at the usermode level (by API hooking or patching).  
+
+Multiple fallback methods are present incase we cannot somehow allocate memory for shellcodes: the file `CallStub.asm` contains assembler routines which mimic `NtQueueApcThreadEx` and `NtQueueApcThreadEx2`, and we also have function pointer lookups which will directly call `NtQueueApcThreadEx2` (although this is not resistant to patches over this routine, which is why shellcode exeuction is the best execution method).  
