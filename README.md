@@ -1,5 +1,5 @@
-# StealthAPCDispatcher - Windows, C++
-Schedules functions to be executed via user APC by using direct syscalls within an encrypted shellcode. Perfect for stealth operations in red-teams, anti-cheat, cheats, etc.  
+# Stealth APC Dispatcher - A stealthy alternative for thread creation on Windows (C++)
+The `ApcExecutor` class schedules functions to be executed via user APC by using direct syscalls within an encrypted shellcode. Perfect for stealth operations in red-teams, anti-cheat, cheats, etc.  
 
 Works by using C++ template recursion to pack parameters into a structure object, which is then passed to the APC routine. This method supports any number of parameters and works elegantly to hide function exeuction for routines which would normally be in their own threads, allowing you to avoid using `CreateThread` or similar. We use one APC sleeper thread which sleeps infinitely until woken up by a scheduled/queued routine, meaning work can be scheduled without any subsequent calls to `CreateThread`, since queued routines are executed in the context of the sleeper thread. Because we are using encrypted shellcode with a direct `syscall`, execution of our queued tasks cannot be tampered with easily at the usermode level (through API hooking or WINAPI patching). The downside is that routines are "queued" sequentially by the OS, and do not run parallel of eachother (which may imply slower execution times when compared to a pure multi-threaded application).  
 
