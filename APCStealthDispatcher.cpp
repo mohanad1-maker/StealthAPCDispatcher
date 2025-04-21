@@ -112,7 +112,12 @@ private:
 			typedef NTSTATUS(*MyNtQueueApcThreadEx2_t)(HANDLE, HANDLE, ULONG, PVOID, PVOID, PVOID, PVOID);
 			MyNtQueueApcThreadEx2_t _MyNtQueueApcThreadEx2 = (MyNtQueueApcThreadEx2_t)shellcodeMemory;
 
-			return _MyNtQueueApcThreadEx2(_hWorker, NULL, 0, fn, (PVOID)param, NULL, NULL);
+			NTSTATUS status = _MyNtQueueApcThreadEx2(_hWorker, NULL, 0, fn, (PVOID)param, NULL, NULL);
+
+			VirtualFree(shellcodeMemory, 0, MEM_RELEASE); //free the allocated memory
+
+			return status;
+
 #else //x86's shellcode version is a bit more work to add in since it calls some offset in ntdll in edx register, for now fallback to regular call
 			return _NtQueueApcThreadEx2(_hWorker, NULL, 0, fn, (PVOID)param, NULL, NULL); //fallback to low-level winapi
 #endif
