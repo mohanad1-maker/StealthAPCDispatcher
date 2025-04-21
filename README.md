@@ -1,4 +1,5 @@
-# Stealth APC Dispatcher - A stealthy alternative for thread creation on Windows (C++)
+# Stealth APC Dispatcher - A stealthy alternative to threads for tasking functions (Windows, C++)  
+
 The `ApcExecutor` class schedules functions to be executed via user APC by using direct syscalls within an encrypted shellcode. Perfect for stealth operations in red-teams, anti-cheat, cheats, etc.  
 
 ## How it works  
