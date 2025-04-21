@@ -13,7 +13,7 @@ extern "C" NTSTATUS _MyNtQueueApcThreadEx(HANDLE ThreadHandle, HANDLE ApcContext
 
 //4C 8B D1 B8 67 01 00 00 CD 2E C3
 extern "C" NTSTATUS _MyNtQueueApcThreadEx2(HANDLE ThreadHandle, HANDLE ApcContext, ULONG ApcMode, PVOID ApcRoutine, PVOID ApcArgument1, PVOID ApcArgument2, PVOID ApcArgument3);
-
+#else //currently I haven't finished x86 asm stubs for this since it uses WoW64 transition, and needs to be looked up dynamically
 #endif
 
 class ApcExecutor
@@ -27,9 +27,9 @@ public:
 		if (!_hWorker)
 			throw std::runtime_error("Failed to create APC worker thread");
 #ifdef _M_X64 	
-		_NtQueueApcThreadEx2 = reinterpret_cast<NtQueueApcThreadEx2_t>(GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueueApcThreadEx2"));
+		_NtQueueApcThread = reinterpret_cast<NtQueueApcThreadEx2_t>(GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueueApcThreadEx2"));
 #else
-		_NtQueueApcThreadEx2 = reinterpret_cast<NtQueueApcThreadEx2_t>(GetProcAddress(GetModuleHandleA("ntdll.dll"), "ZwQueueApcThreadEx2")); //NtQueueApcThreadEx2 does not exist in x86, but ZwQueueApcThreadEx2 does (and works fine)
+		_NtQueueApcThread = reinterpret_cast<NtQueueApcThreadEx2_t>(GetProcAddress(GetModuleHandleA("ntdll.dll"), "ZwQueueApcThreadEx2")); //NtQueueApcThreadEx2 does not exist in x86, but ZwQueueApcThreadEx2 does (and works fine)
 #endif
 	}
 
@@ -69,7 +69,7 @@ private:
 
 	using NtQueueApcThreadEx2_t = NTSTATUS(NTAPI*)(HANDLE, HANDLE, ULONG, PVOID, PVOID, PVOID, PVOID);
 
-	NtQueueApcThreadEx2_t _NtQueueApcThreadEx2 = nullptr;
+	NtQueueApcThreadEx2_t _NtQueueApcThread = nullptr;
 
 	template<typename Func, typename... Args>
 	struct TaskThunk
@@ -121,8 +121,10 @@ private:
 
 			constexpr uint8_t shellcode_Ex2[] =  //weakly encrypted shellcode, which will be copied to our allocated region and then decrypted & executed
 			{
-				0x4C ^ xor_key, 0x8B ^ xor_key, 0xD1 ^ xor_key, 0xB8 ^ xor_key, 0x67 ^ xor_key, 0x01 ^ xor_key, 0x00 ^ xor_key, 0x00 ^ xor_key,
-				0xCD ^ xor_key, 0x2E ^ xor_key, 0xC3 ^ xor_key
+				0x4C ^ xor_key, 0x8B ^ xor_key, 0xD1 ^ xor_key,                                  //mov r10, rcx
+				0xB8 ^ xor_key, 0x67 ^ xor_key, 0x01 ^ xor_key, 0x00 ^ xor_key, 0x00 ^ xor_key,  //mov eax, 167h
+				0xCD ^ xor_key, 0x2E ^ xor_key,                                                  //int 2e
+				0xC3 ^ xor_key                                                                   //ret
 			};
 
 			DWORD dwOldProt = 0;
@@ -162,7 +164,7 @@ private:
 		}
 		else if (CallMethod == CallMethod_NtQueueApcThreadEx2)
 		{
-			return _NtQueueApcThreadEx2(_hWorker, NULL, 0, fn, (PVOID)param, NULL, NULL); //low-level winapi, suitable in both x86 and x64 across most newer windows builds
+			return _NtQueueApcThread(_hWorker, NULL, 0, fn, (PVOID)param, NULL, NULL); //low-level winapi, suitable in both x86 and x64 across most newer windows builds
 		}
 		else if(CallMethod == CallMethod_QueueUserAPC)
 		{
