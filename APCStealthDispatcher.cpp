@@ -19,21 +19,26 @@ extern "C" NTSTATUS _MyNtQueueApcThreadEx2(HANDLE ThreadHandle, HANDLE ApcContex
 class ApcExecutor
 {
 public:
+
 	ApcExecutor()
 	{
-		_hWorker = CreateThread(nullptr, 0, WorkerRoutine, nullptr, 0, nullptr);
+		_hWorker = CreateThread(nullptr, 0, WorkerRoutine, this, 0, nullptr);
 
 		if (!_hWorker)
 			throw std::runtime_error("Failed to create APC worker thread");
-
+#ifdef _M_X64 	
 		_NtQueueApcThreadEx2 = reinterpret_cast<NtQueueApcThreadEx2_t>(GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueueApcThreadEx2"));
+#else
+		_NtQueueApcThreadEx2 = reinterpret_cast<NtQueueApcThreadEx2_t>(GetProcAddress(GetModuleHandleA("ntdll.dll"), "ZwQueueApcThreadEx2")); //NtQueueApcThreadEx2 does not exist in x86, but ZwQueueApcThreadEx2 does (and works fine)
+#endif
 	}
 
 	~ApcExecutor()
 	{
-		if (_hWorker)
+		if (_hWorker != INVALID_HANDLE_VALUE && !_bShutdownSignalled)
 		{
-			TerminateThread(_hWorker, 0); //fast exit, you can add signalled shutdown if you want
+			SignalShutdown(true); //fast exit, you can add signalled shutdown if you want
+			WaitForSingleObject(_hWorker, INFINITE); //wait for the thread to finish executing before exiting the program
 			CloseHandle(_hWorker);
 		}
 	}
@@ -45,8 +50,22 @@ public:
 		return NT_SUCCESS(CallQueueApc((PAPCFUNC)TaskThunk<Func, Args...>::Thunk, (ULONG_PTR)pThunk));
 	}
 
+	void SignalShutdown(__in const bool bShutdown) { this->_bShutdownSignalled = bShutdown; } //end the APC sleeper thread
+
 private:
+
+	enum CallMethod
+	{
+		CallMethod_QueueUserAPC,
+		CallMethod_NtQueueApcThreadEx2,
+		CallMethod_AsmStub,
+		CallMethod_Shellcode
+	};
+
+	CallMethod CallMethod = CallMethod_Shellcode; //set this to the method you want to use. you can change it at runtime if you want to make things trickier to analyze 
+
 	HANDLE _hWorker = nullptr;
+	bool _bShutdownSignalled = false;
 
 	using NtQueueApcThreadEx2_t = NTSTATUS(NTAPI*)(HANDLE, HANDLE, ULONG, PVOID, PVOID, PVOID, PVOID);
 
@@ -75,22 +94,32 @@ private:
 		}
 	};
 
-	static DWORD WINAPI WorkerRoutine(LPVOID)
+	static DWORD WINAPI WorkerRoutine(__in LPVOID lpThisPtr)
 	{
+		ApcExecutor* pThis = reinterpret_cast<ApcExecutor*>(lpThisPtr);
+		
+		if (!pThis)
+			return 1;
+
 		while (true)
 		{
-			SleepEx(INFINITE, TRUE); // alertable wait
+			if (pThis->_bShutdownSignalled)
+				break;
+
+			SleepEx(1000, TRUE); // alertable wait -> don't use INFINITE here, since signalling for thread shutdown won't reliably work (gets stuck in SleepEx forever)
 		}
+
+		return 0;
 	}
 
 	NTSTATUS CallQueueApc(PAPCFUNC fn, ULONG_PTR param)
 	{
-		if (_NtQueueApcThreadEx2)
+		if (CallMethod == CallMethod_Shellcode)
 		{
 #ifdef _M_X64
-			const uint8_t xor_key = 0x48;
+			constexpr uint8_t xor_key = 0x48;
 
-			uint8_t shellcode_Ex2[] =  //weakly encrypted shellcode, which will be copied to our allocated region and then decrypted & executed
+			constexpr uint8_t shellcode_Ex2[] =  //weakly encrypted shellcode, which will be copied to our allocated region and then decrypted & executed
 			{
 				0x4C ^ xor_key, 0x8B ^ xor_key, 0xD1 ^ xor_key, 0xB8 ^ xor_key, 0x67 ^ xor_key, 0x01 ^ xor_key, 0x00 ^ xor_key, 0x00 ^ xor_key,
 				0xCD ^ xor_key, 0x2E ^ xor_key, 0xC3 ^ xor_key
@@ -117,15 +146,32 @@ private:
 			VirtualFree(shellcodeMemory, 0, MEM_RELEASE); //free the allocated memory
 
 			return status;
-
-#else //x86's shellcode version is a bit more work to add in since it calls some offset in ntdll in edx register, for now fallback to regular call
-			return _NtQueueApcThreadEx2(_hWorker, NULL, 0, fn, (PVOID)param, NULL, NULL); //fallback to low-level winapi
+#else
+			std::cerr << "Call method not yet supported in 32-bit!" << std::endl;
+			return -1;
+#endif  //x86 is not yet supported for shellcode, will be added in future code pushes
+		}
+		else if (CallMethod == CallMethod_AsmStub)
+		{
+#ifdef _M_X64
+			return _MyNtQueueApcThreadEx2(_hWorker, NULL, 0, fn, (PVOID)param, NULL, NULL); //ASM syscall stub
+#else
+			std::cerr << "Call method not yet supported in 32-bit!" << std::endl;
+			return -1;
 #endif
+		}
+		else if (CallMethod == CallMethod_NtQueueApcThreadEx2)
+		{
+			return _NtQueueApcThreadEx2(_hWorker, NULL, 0, fn, (PVOID)param, NULL, NULL); //low-level winapi, suitable in both x86 and x64 across most newer windows builds
+		}
+		else if(CallMethod == CallMethod_QueueUserAPC)
+		{
+			return QueueUserAPC(fn, _hWorker, param) ? 0 : -1; 	// fallback to higher-level API, which can be easily blocked by patching over ntdll.Ordinal8
 		}
 		else
 		{
-			// fallback to higher-level API, which can be easily blocked by patching over ntdll.Ordinal8
-			return QueueUserAPC(fn, _hWorker, param) ? 0 : -1;
+			std::cerr << "Invalid call method" << std::endl;
+			return -1;
 		}
 	}
 
