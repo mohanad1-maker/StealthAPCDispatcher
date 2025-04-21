@@ -17,3 +17,14 @@ Multiple fallback methods are present incase we cannot somehow allocate memory f
 
 Since different Windows builds might have different syscall dispatch numbers, you'll want to make sure that 0x166 and 0x167 are the correct ones for `NtQueueApcThreadEx` and `NtQueueApcThreadEx2` on your machine. These can be found by viewing these routines in a disassembler and seeing what number it is in the second instruction of the routine, which usually looks like `mov rax,00000166`. In the worst case when the `NtQueueApcThreadEx2` cannot be located dynamically, the `QueueUserAPC` is used as a fallback method. Some of my other projects have already explored that this routine can be easily blocked by patching over `ntdll!Ordinal8` (on x64), so it's not ideal. The lower-level `NtQueueApcThreadEx` routines can also be patched over, which is why we want to ideally execute our own syscall stub (which gets allocated into memory each time a queued routine is called).  
 
+## Example Output:
+```
+APC-scheduled routine
+Arguments: 26500, 6334, 18467, 41
+APC-scheduled routine
+Arguments: 29358, 11478, 15724, 19169
+APC-scheduled routine
+Arguments: 28145, 5705, 24464, 26962
+APC-scheduled routine
+Arguments: 491, 9961, 16827, 23281
+```
